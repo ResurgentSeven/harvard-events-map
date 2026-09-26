@@ -36,25 +36,26 @@ source is fetched concurrently and wrapped in try/except, so one slow, blocked,
 or changed site never breaks the others. Results and geocodes are cached to
 gitignored dotfiles in `scraper/` so repeat runs are fast.
 
-## Deploying (Cloudflare Pages)
+## Deploying (Cloudflare, push-to-deploy)
 
-The site is the static contents of `public/`. First deploy creates the project
-and a public `*.pages.dev` URL:
+The site is the static contents of `public/`, deployed as a Cloudflare
+static-assets Worker (see `wrangler.jsonc` → `assets.directory: "./public"`).
+This repo is connected to Cloudflare via Git integration, so **every push to
+`main` auto-deploys** — Cloudflare runs `npx wrangler deploy`, which uploads
+`public/` as static assets. There is no build step.
 
-```bash
-npx wrangler login                                              # one-time browser auth
-npx wrangler pages deploy public --project-name harvard-events-map
-```
-
-Re-deploy after refreshing the snapshot:
+To refresh the event data and republish:
 
 ```bash
-py scraper/harvard_snapshot.py --refresh
-npx wrangler pages deploy public --project-name harvard-events-map
+py scraper/harvard_snapshot.py --refresh   # rewrites public/events.json
+git commit -am "refresh events snapshot" && git push
 ```
 
-Alternatively, connect this GitHub repo in the Cloudflare dashboard
-(**Workers & Pages → Create → Pages → Connect to Git**) with **build output
-directory** `public` and no build command, to auto-deploy on every push.
+If you ever want to deploy manually from a machine with Node installed:
+
+```bash
+npx wrangler login       # one-time browser auth
+npx wrangler deploy      # uploads ./public per wrangler.jsonc
+```
 
 Any static host works too (GitHub Pages, Netlify, etc.) — just serve `public/`.

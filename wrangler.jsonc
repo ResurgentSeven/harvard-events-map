@@ -1,14 +1,16 @@
 {
-  // Cloudflare Pages project for the Harvard Events Map.
+  // Cloudflare static-assets Worker for the Harvard Events Map.
   // The published site is the static contents of ./public (index.html + events.json).
+  // Cloudflare's Git integration runs `npx wrangler deploy`, which uploads the
+  // directory named below as static assets (no Worker script needed) -- the same
+  // setup as the WebApps repo.
   //
-  // First deploy (creates the project + a public *.pages.dev URL):
-  //   npx wrangler pages deploy public --project-name harvard-events-map
-  //
-  // Re-deploy after refreshing the snapshot:
+  // Deploy happens automatically on every push to GitHub. To refresh event data:
   //   py scraper/harvard_snapshot.py --refresh
-  //   npx wrangler pages deploy public --project-name harvard-events-map
+  //   git commit -am "refresh events snapshot" && git push
   "name": "harvard-events-map",
-  "pages_build_output_dir": "public",
-  "compatibility_date": "2026-01-01"
+  "compatibility_date": "2026-01-01",
+  "assets": {
+    "directory": "./public"
+  }
 }
