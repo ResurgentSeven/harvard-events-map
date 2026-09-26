@@ -1,0 +1,11 @@
+# Scraper caches (regenerated on demand; never published)
+scraper/.harvard_events_cache.json
+scraper/.harvard_geocode_cache.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Wrangler / Cloudflare
+.wrangler/
+node_modules/

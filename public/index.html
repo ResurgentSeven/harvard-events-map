@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Harvard Events Map</title>
+
+  <!-- Leaflet: free, no API key/token. Loaded from a pinned CDN build; if it (or the
+       free OpenStreetMap tiles) can't load, the app degrades to a list-only view. -->
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+        crossorigin="" />
+
+  <style>
+    :root {
+      --crimson: #A51C30;
+      --crimson-dark: #7d1525;
+      --ink: #1a1416;
+      --paper: #f7f3ee;
+      --card: #ffffff;
+      --muted: #6b6168;
+      --line: #e4dcd2;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    header {
+      background: var(--crimson);
+      color: #fff;
+      padding: max(env(safe-area-inset-top), 10px) 14px 10px;
+      flex: 0 0 auto;
+      box-shadow: 0 2px 10px rgba(0,0,0,.18);
+      z-index: 1200;
+    }
+    .titlebar { display: flex; align-items: center; gap: 10px; }
+    .titlebar h1 { font-size: 19px; margin: 0; font-weight: 700; letter-spacing: .2px; }
+    .titlebar .veritas { font-size: 22px; }
+    .mode {
+      margin-left: auto; font-size: 11px; font-weight: 600; padding: 3px 9px;
+      border-radius: 999px; background: rgba(255,255,255,.18); white-space: nowrap;
+    }
+    .mode.live { background: #1f9d55; }
+
+    .controls { display: flex; gap: 8px; margin-top: 9px; flex-wrap: wrap; }
+    .controls input[type="search"] {
+      flex: 1 1 180px; min-width: 0; border: none; border-radius: 9px;
+      padding: 9px 12px; font-size: 15px; color: var(--ink); background: #fff;
+    }
+    .controls select, .controls button {
+      border: none; border-radius: 9px; padding: 9px 11px; font-size: 14px;
+      background: rgba(255,255,255,.92); color: var(--ink); font-weight: 600;
+      cursor: pointer;
+    }
+    .controls button:active { transform: translateY(1px); }
+    .controls .toggle.on { background: var(--ink); color: #fff; }
+
+    .banner {
+      background: #fff6e5; color: #7a5b12; font-size: 12.5px; line-height: 1.4;
+      padding: 7px 14px; border-bottom: 1px solid #f0e2c2; flex: 0 0 auto;
+    }
+    .banner.hidden { display: none; }
+
+    main { flex: 1 1 auto; display: flex; min-height: 0; }
+
+    /* List */
+    #list {
+      width: 340px; max-width: 42%; flex: 0 0 auto; overflow-y: auto;
+      background: var(--paper); border-right: 1px solid var(--line);
+      -webkit-overflow-scrolling: touch;
+    }
+    .count { padding: 9px 14px 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+    .event {
+      padding: 11px 14px; border-bottom: 1px solid var(--line); cursor: pointer;
+      transition: background .12s;
+    }
+    .event:hover { background: #efe8df; }
+    .event.active { background: #f3dde1; box-shadow: inset 3px 0 0 var(--crimson); }
+    .event .et { font-weight: 650; font-size: 14.5px; line-height: 1.25; }
+    .event .ed { font-size: 12.5px; color: var(--crimson-dark); font-weight: 600; margin-top: 3px; }
+    .event .el { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+    .event .nogeo { font-size: 10.5px; color: #b08; font-weight: 600; }
+
+    /* Map */
+    #map { flex: 1 1 auto; min-width: 0; background: #aadaff; z-index: 1; }
+    #map.hidden { display: none; }
+    #list.full { width: 100%; max-width: 100%; border-right: none; }
+
+    .leaflet-popup-content { margin: 11px 13px; font-size: 13px; line-height: 1.4; }
+    .pop-title { font-weight: 700; font-size: 14px; color: var(--ink); }
+    .pop-date { color: var(--crimson-dark); font-weight: 600; margin: 3px 0; }
+    .pop-loc { color: var(--muted); }
+    .pop-src { color: var(--muted); font-size: 11px; margin-top: 4px; }
+    .pop-link {
+      display: inline-block; margin-top: 7px; background: var(--crimson); color: #fff;
+      text-decoration: none; padding: 5px 11px; border-radius: 7px; font-weight: 600; font-size: 12.5px;
+    }
+
+    .empty { padding: 30px 16px; text-align: center; color: var(--muted); font-size: 14px; }
+
+    @media (max-width: 720px) {
+      main { flex-direction: column; }
+      #map { flex: 1 1 45%; min-height: 200px; order: 1; }
+      #list { width: 100%; max-width: 100%; flex: 1 1 55%; order: 2;
+              border-right: none; border-top: 1px solid var(--line); }
+      #list.full { flex: 1 1 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="titlebar">
+      <span class="veritas">🎓</span>
+      <h1>Harvard Events Map</h1>
+      <span id="mode" class="mode">sample</span>
+    </div>
+    <div class="controls">
+      <input id="search" type="search" placeholder="Search events, cities, clubs…" autocomplete="off" />
+      <select id="region" aria-label="Filter by region"></select>
+      <button id="upcoming" class="toggle on" title="Show only upcoming events">Upcoming</button>
+      <button id="refresh" title="Refresh live data">↻</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner hidden"></div>
+
+  <main>
+    <div id="list">
+      <div class="count" id="count"></div>
+      <div id="events"></div>
+    </div>
+    <div id="map"></div>
+  </main>
+
+  <!-- Leaflet JS (free, no token). Guarded: if it fails, we fall back to list-only. -->
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+    crossorigin=""></script>
+
+  <script>
+  "use strict";
+
+  // ----------------------------------------------------------------------- //
+  // Bundled sample data — real Harvard Clubs worldwide with real coordinates. //
+  // This is what the public Cloudflare build (no server) shows; opening the   //
+  // app via the local server swaps in live-scraped events from the club sites.//
+  // ----------------------------------------------------------------------- //
+  const SAMPLE_EVENTS = [
+    { title: "Harvard Alumni Day on Campus", start: "2026-06-20", location: "Harvard Yard, Cambridge, MA, USA", lat: 42.3744, lon: -71.1169, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Alumni Association", description: "An afternoon of talks, tours, and reunions in Harvard Yard." },
+    { title: "Summer Rooftop Networking Social", start: "2026-06-25", location: "Harvard Club of New York City, 35 W 44th St, New York, NY, USA", lat: 40.7549, lon: -73.9840, url: "https://www.hcny.com/events", source: "Harvard Club of New York City", description: "Cocktails and connections with NYC-area alumni on the club terrace." },
+    { title: "Boston Pops at the Harvard Club", start: "2026-07-02", location: "Harvard Club of Boston, 374 Commonwealth Ave, Boston, MA, USA", lat: 42.3505, lon: -71.0743, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Boston", description: "An evening of music and dinner with fellow alumni." },
+    { title: "Independence Day BBQ & Family Day", start: "2026-07-04", location: "Golden Gate Park, San Francisco, CA, USA", lat: 37.7694, lon: -122.4862, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of San Francisco", description: "Bring the family for a casual cookout in the park." },
+    { title: "DC Policy Forum: AI & Governance", start: "2026-07-09", location: "Washington, DC, USA", lat: 38.9007, lon: -77.0377, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Washington DC", description: "A panel of Harvard faculty and alumni on emerging AI policy." },
+    { title: "Thames Summer Boat Cruise", start: "2026-07-12", location: "River Thames, London, United Kingdom", lat: 51.5072, lon: -0.1190, url: "https://www.harvardclub.org.uk/events", source: "Harvard Club of the United Kingdom", description: "An evening cruise past London's landmarks with UK alumni." },
+    { title: "Wine Tasting at the Eiffel Tower", start: "2026-07-18", location: "Paris, France", lat: 48.8584, lon: 2.2945, url: "https://www.harvardclub.fr/events", source: "Harvard Club of France", description: "Sample French wines with a view of the Tour Eiffel." },
+    { title: "Harbour Sunset Reception", start: "2026-07-22", location: "Victoria Harbour, Hong Kong", lat: 22.2940, lon: 114.1700, url: "https://www.harvardhk.com/events", source: "Harvard Club of Hong Kong", description: "Drinks and networking overlooking Victoria Harbour." },
+    { title: "Marina Bay Alumni Mixer", start: "2026-07-25", location: "Marina Bay, Singapore", lat: 1.2834, lon: 103.8607, url: "https://www.harvardclub.org.sg/events", source: "Harvard Club of Singapore", description: "Meet Southeast Asia alumni at a waterfront venue." },
+    { title: "Tokyo Tech & Startups Panel", start: "2026-08-01", location: "Shibuya, Tokyo, Japan", lat: 35.6595, lon: 139.7005, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Japan", description: "Founders and investors discuss Japan's startup scene." },
+    { title: "Sydney Harbour Walk & Brunch", start: "2026-08-08", location: "Sydney Opera House, Sydney, Australia", lat: -33.8568, lon: 151.2153, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Australia", description: "A morning walk along the harbour followed by brunch." },
+    { title: "Toronto Summer Patio Social", start: "2026-08-13", location: "Distillery District, Toronto, Canada", lat: 43.6503, lon: -79.3596, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Toronto", description: "Casual drinks with the Greater Toronto Area alumni community." },
+    { title: "Mumbai Monsoon Speaker Series", start: "2026-08-20", location: "Nariman Point, Mumbai, India", lat: 18.9256, lon: 72.8242, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of India", description: "A leading alumna shares her career journey." },
+    { title: "Desert Stargazing Dinner", start: "2026-09-05", location: "Dubai, United Arab Emirates", lat: 25.2048, lon: 55.2708, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of the UAE", description: "Dinner under the stars in the dunes outside Dubai." },
+    { title: "São Paulo Business Breakfast", start: "2026-09-10", location: "Avenida Paulista, São Paulo, Brazil", lat: -23.5614, lon: -46.6560, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Brazil", description: "Morning networking with Brazil's alumni leaders." },
+    { title: "Mexico City Cultural Evening", start: "2026-09-17", location: "Polanco, Mexico City, Mexico", lat: 19.4333, lon: -99.1900, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Mexico", description: "An evening of art, music, and conversation." },
+    { title: "Berlin Innovation Tour", start: "2026-09-24", location: "Mitte, Berlin, Germany", lat: 52.5244, lon: 13.4105, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Germany", description: "Visit Berlin's leading tech and design studios." },
+    { title: "Shanghai Bund Reception", start: "2026-10-02", location: "The Bund, Shanghai, China", lat: 31.2400, lon: 121.4900, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Shanghai", description: "Evening reception along the historic Bund waterfront." },
+    { title: "Nairobi Conservation Talk", start: "2026-10-09", location: "Nairobi, Kenya", lat: -1.2921, lon: 36.8219, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Kenya", description: "A discussion on wildlife conservation and policy." },
+    { title: "Seoul Alumni Autumn Gathering", start: "2026-10-15", location: "Gangnam, Seoul, South Korea", lat: 37.4979, lon: 127.0276, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Korea", description: "Fall meetup for Korea-based alumni." },
+    { title: "Buenos Aires Tango Night", start: "2026-10-22", location: "San Telmo, Buenos Aires, Argentina", lat: -34.6211, lon: -58.3731, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Argentina", description: "A tango lesson and dinner for alumni and guests." },
+    { title: "Madrid Tapas Crawl", start: "2026-10-29", location: "La Latina, Madrid, Spain", lat: 40.4110, lon: -3.7090, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Spain", description: "An evening sampling tapas across the old quarter." },
+    { title: "Chicago Architecture River Tour", start: "2026-11-05", location: "Chicago Riverwalk, Chicago, IL, USA", lat: 41.8881, lon: -87.6233, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Chicago", description: "A guided boat tour of Chicago's iconic skyline." },
+    { title: "LA Industry & Entertainment Mixer", start: "2026-11-12", location: "Downtown Los Angeles, CA, USA", lat: 34.0407, lon: -118.2468, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Southern California", description: "Connect with alumni across film, music, and media." },
+    { title: "Seattle Coffee & Climate Roundtable", start: "2026-11-19", location: "Seattle, WA, USA", lat: 47.6062, lon: -122.3321, url: "https://alumni.harvard.edu/programs-events", source: "Harvard Club of Seattle", description: "A morning conversation on climate and clean tech." }
+  ];
+
+  // --------------------------------------------------------------------- //
+  // State                                                                 //
+  // --------------------------------------------------------------------- //
+  let ALL = [];                 // normalized events
+  let map = null, markers = {}; // Leaflet map + id -> marker
+  let activeId = null;
+  let mapReady = false;
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    search: $("search"), region: $("region"), upcoming: $("upcoming"),
+    refresh: $("refresh"), events: $("events"), count: $("count"),
+    mode: $("mode"), banner: $("banner"), map: $("map"), list: $("list"),
+  };
+
+  // --------------------------------------------------------------------- //
+  // Helpers                                                               //
+  // --------------------------------------------------------------------- //
+  function normalize(ev, i) {
+    return {
+      id: "ev" + i,
+      title: ev.title || "Untitled event",
+      start: ev.start || "",
+      end: ev.end || "",
+      location: ev.location || "",
+      lat: typeof ev.lat === "number" ? ev.lat : null,
+      lon: typeof ev.lon === "number" ? ev.lon : null,
+      url: ev.url || "",
+      source: ev.source || "",
+      description: ev.description || "",
+    };
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "Date TBA";
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    const hasTime = /T\d/.test(iso);
+    const opts = { weekday: "short", month: "short", day: "numeric", year: "numeric" };
+    if (hasTime) { opts.hour = "numeric"; opts.minute = "2-digit"; }
+    return d.toLocaleDateString(undefined, opts);
+  }
+
+  function isUpcoming(ev) {
+    if (!ev.start) return true; // undated events always show
+    const d = new Date(ev.end || ev.start);
+    if (isNaN(d)) return true;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return d >= today;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // Region grouping for the filter dropdown, derived from longitude/latitude.
+  function regionOf(ev) {
+    if (ev.lat === null || ev.lon === null) return "Other";
+    const { lat, lon } = ev;
+    if (lon >= -170 && lon < -30) return lat > 12 ? "North America" : "Latin America";
+    if (lon >= -30 && lon < 40) return lat > 35 ? "Europe" : "Africa & Middle East";
+    if (lon >= 40 && lon < 65) return "Africa & Middle East";
+    if (lon >= 65 && lon < 150) return lat > -10 ? "Asia" : "Oceania";
+    return "Oceania";
+  }
+
+  // --------------------------------------------------------------------- //
+  // Rendering                                                            //
+  // --------------------------------------------------------------------- //
+  function filtered() {
+    const q = els.search.value.trim().toLowerCase();
+    const region = els.region.value;
+    const onlyUpcoming = els.upcoming.classList.contains("on");
+    return ALL.filter((ev) => {
+      if (onlyUpcoming && !isUpcoming(ev)) return false;
+      if (region && region !== "all" && regionOf(ev) !== region) return false;
+      if (q) {
+        const hay = (ev.title + " " + ev.location + " " + ev.source + " " + ev.description).toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  function render() {
+    const list = filtered();
+    list.sort((a, b) => (a.start || "9999").localeCompare(b.start || "9999"));
+
+    // List
+    els.count.textContent = `${list.length} event${list.length === 1 ? "" : "s"}` +
+      (els.upcoming.classList.contains("on") ? " · upcoming" : "");
+    if (!list.length) {
+      els.events.innerHTML = '<div class="empty">No events match your search.</div>';
+    } else {
+      els.events.innerHTML = list.map((ev) => `
+        <div class="event" data-id="${ev.id}">
+          <div class="et">${escapeHtml(ev.title)}</div>
+          <div class="ed">${escapeHtml(fmtDate(ev.start))}</div>
+          <div class="el">${escapeHtml(ev.location || ev.source)}${
+            ev.lat === null ? ' · <span class="nogeo">no map pin</span>' : ""}</div>
+        </div>`).join("");
+      els.events.querySelectorAll(".event").forEach((node) => {
+        node.addEventListener("click", () => focusEvent(node.dataset.id));
+      });
+    }
+
+    // Markers
+    if (mapReady) renderMarkers(list);
+  }
+
+  function popupHtml(ev) {
+    return `<div class="pop-title">${escapeHtml(ev.title)}</div>
+      <div class="pop-date">${escapeHtml(fmtDate(ev.start))}</div>
+      ${ev.location ? `<div class="pop-loc">${escapeHtml(ev.location)}</div>` : ""}
+      ${ev.description ? `<div class="pop-loc" style="margin-top:5px">${escapeHtml(ev.description)}</div>` : ""}
+      ${ev.source ? `<div class="pop-src">${escapeHtml(ev.source)}</div>` : ""}
+      ${ev.url ? `<a class="pop-link" href="${escapeHtml(ev.url)}" target="_blank" rel="noopener">Event details ↗</a>` : ""}`;
+  }
+
+  function renderMarkers(list) {
+    const wanted = new Set(list.filter((e) => e.lat !== null).map((e) => e.id));
+    // Remove markers no longer in the filter.
+    Object.keys(markers).forEach((id) => {
+      if (!wanted.has(id)) { map.removeLayer(markers[id]); delete markers[id]; }
+    });
+    // Add markers newly in the filter.
+    list.filter((e) => e.lat !== null).forEach((ev) => {
+      if (markers[ev.id]) return;
+      const m = L.marker([ev.lat, ev.lon]).addTo(map).bindPopup(popupHtml(ev));
+      m.on("click", () => highlightInList(ev.id));
+      markers[ev.id] = m;
+    });
+  }
+
+  function highlightInList(id) {
+    activeId = id;
+    els.events.querySelectorAll(".event").forEach((n) =>
+      n.classList.toggle("active", n.dataset.id === id));
+    const node = els.events.querySelector(`.event[data-id="${id}"]`);
+    if (node) node.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  function focusEvent(id) {
+    highlightInList(id);
+    const ev = ALL.find((e) => e.id === id);
+    if (!ev) return;
+    if (mapReady && ev.lat !== null) {
+      map.flyTo([ev.lat, ev.lon], Math.max(map.getZoom(), 9), { duration: 0.8 });
+      const m = markers[id];
+      if (m) setTimeout(() => m.openPopup(), 450);
+    } else if (ev.url) {
+      // No pin (e.g. couldn't geocode) — just open the source page.
+      window.open(ev.url, "_blank", "noopener");
+    }
+  }
+
+  function rebuildRegionFilter() {
+    const regions = Array.from(new Set(ALL.map(regionOf))).sort();
+    const cur = els.region.value || "all";
+    els.region.innerHTML = '<option value="all">🌍 All regions</option>' +
+      regions.map((r) => `<option value="${escapeHtml(r)}">${escapeHtml(r)}</option>`).join("");
+    els.region.value = cur;
+  }
+
+  function setEvents(events) {
+    ALL = events.map(normalize);
+    rebuildRegionFilter();
+    render();
+    // Reset markers fully on a data swap.
+    if (mapReady) {
+      Object.values(markers).forEach((m) => map.removeLayer(m));
+      markers = {};
+      renderMarkers(filtered());
+    }
+  }
+
+  // --------------------------------------------------------------------- //
+  // Map setup (Leaflet + free OSM tiles), with graceful fallback          //
+  // --------------------------------------------------------------------- //
+  function initMap() {
+    if (typeof L === "undefined") {
+      // Leaflet didn't load (offline / CDN blocked) — go list-only.
+      els.map.classList.add("hidden");
+      els.list.classList.add("full");
+      showBanner("Map library couldn't load — showing the event list only. Reconnect to see the world map.");
+      return;
+    }
+    map = L.map("map", { worldCopyJump: true, zoomControl: true })
+      .setView([25, 5], 2);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+    mapReady = true;
+    renderMarkers(filtered());
+  }
+
+  function showBanner(html) {
+    els.banner.innerHTML = html;
+    els.banner.classList.remove("hidden");
+  }
+
+  // --------------------------------------------------------------------- //
+  // Event data, in order of preference:                                   //
+  //   1. /api/harvard-events  -- the local server scrapes live, on demand //
+  //   2. events.json          -- a real scraped snapshot shipped with the //
+  //                              static build (so the public site shows    //
+  //                              genuine worldwide data, refreshed on a    //
+  //                              schedule via harvard_snapshot.py)         //
+  //   3. SAMPLE_EVENTS        -- bundled fallback so the map is never empty//
+  // --------------------------------------------------------------------- //
+  function freshness(iso) {
+    const t = Date.parse(iso || "");
+    if (!t) return "";
+    const h = Math.round((Date.now() - t) / 3.6e6);
+    if (h < 1) return " · updated just now";
+    if (h < 24) return ` · updated ${h}h ago`;
+    return ` · updated ${Math.round(h / 24)}d ago`;
+  }
+
+  async function loadLive(refresh) {
+    try {
+      const res = await fetch("/api/harvard-events" + (refresh ? "?refresh=1" : ""), {
+        headers: { "Accept": "application/json" },
+      });
+      if (!res.ok) throw new Error("no endpoint");
+      const data = await res.json();
+      if (!data || !Array.isArray(data.events)) throw new Error("bad payload");
+      if (!data.events.length) throw new Error("no events scraped");
+      setEvents(data.events);
+      els.mode.textContent = "● live";
+      els.mode.classList.add("live");
+      const when = data.cached ? "cached" : "fresh";
+      const okSources = (data.sources || []).filter((s) => s.ok).length;
+      showBanner(`Live: ${data.events.length} events scraped from ${okSources} Harvard club site(s) (${when}). ` +
+        `Tap ↻ to refresh.`);
+      setTimeout(() => els.banner.classList.add("hidden"), 6000);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function loadSnapshot() {
+    try {
+      // Relative URL -> events.json served next to this page (the published snapshot).
+      const res = await fetch("events.json", { headers: { "Accept": "application/json" } });
+      if (!res.ok) throw new Error("no snapshot");
+      const data = await res.json();
+      if (!data || !Array.isArray(data.events) || !data.events.length) throw new Error("empty snapshot");
+      setEvents(data.events);
+      els.mode.textContent = "● live";
+      els.mode.classList.add("live");
+      const okSources = (data.sources || []).filter((s) => s.ok).length;
+      showBanner(`${data.events.length} Harvard club events worldwide, scraped from ${okSources} club sites${freshness(data.fetchedAt)}.`);
+      setTimeout(() => els.banner.classList.add("hidden"), 7000);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  async function boot() {
+    // Show the bundled sample immediately so the map is never empty.
+    setEvents(SAMPLE_EVENTS);
+    if (await loadLive(false)) return;       // local server: live, on-demand scrape
+    if (await loadSnapshot()) return;        // public site: latest scraped snapshot
+    els.mode.textContent = "sample";         // last resort
+    showBanner("Showing a sample of Harvard club events worldwide.");
+  }
+
+  // --------------------------------------------------------------------- //
+  // Events                                                               //
+  // --------------------------------------------------------------------- //
+  let searchTimer = null;
+  els.search.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(render, 120);
+  });
+  els.region.addEventListener("change", render);
+  els.upcoming.addEventListener("click", () => {
+    els.upcoming.classList.toggle("on");
+    render();
+  });
+  els.refresh.addEventListener("click", async () => {
+    els.refresh.textContent = "…";
+    const ok = (await loadLive(true)) || (await loadSnapshot());
+    els.refresh.textContent = "↻";
+    if (!ok) showBanner("Couldn't refresh — still showing the last data.");
+  });
+
+  // Init map after Leaflet's script tag has had a chance to run.
+  initMap();
+  boot();
+  </script>
+</body>
+</html>

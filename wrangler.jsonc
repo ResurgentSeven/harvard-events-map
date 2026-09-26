@@ -1,0 +1,14 @@
+{
+  // Cloudflare Pages project for the Harvard Events Map.
+  // The published site is the static contents of ./public (index.html + events.json).
+  //
+  // First deploy (creates the project + a public *.pages.dev URL):
+  //   npx wrangler pages deploy public --project-name harvard-events-map
+  //
+  // Re-deploy after refreshing the snapshot:
+  //   py scraper/harvard_snapshot.py --refresh
+  //   npx wrangler pages deploy public --project-name harvard-events-map
+  "name": "harvard-events-map",
+  "pages_build_output_dir": "public",
+  "compatibility_date": "2026-01-01"
+}
